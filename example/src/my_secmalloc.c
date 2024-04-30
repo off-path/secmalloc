@@ -6,11 +6,17 @@
 #include <sys/mman.h>
 #include <string.h>
 
-void    *my_malloc(size_t size)
-{
-    (void) size;
-    return NULL;
+void* my_malloc(size_t size) {
+    if (size == 0) {
+        return NULL;
+    }
+    void* ptr = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (ptr == MAP_FAILED) {
+        return NULL;
+    }
+    return ptr;
 }
+
 void    my_free(void *ptr)
 {
     (void) ptr;

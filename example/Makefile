@@ -9,6 +9,7 @@ all: ${LIB}
 
 ${LIB} : CFLAGS += -fpic -shared
 ${LIB} : ${OBJS}
+	$(LINK.c) -shared $^ $(LDLIBS) -o lib/$@
 
 ${SLIB}: ${OBJS}
 
