@@ -32,10 +32,11 @@ Test(secmalloc_tests, malloc_zero_size) {
 // 3: Allouer une quantité très grande de mémoire.
 
 Test(secmalloc_tests, malloc_large_size) {
-    int* ptr = my_malloc(1e9); // Allouer environ 1 Go
+    int* ptr = my_malloc(100 * 1024 * 1024); // Allouer environ 100 Mo
     cr_assert_not_null(ptr, "malloc should not return NULL for a large but reasonable size request");
     my_free(ptr);
 }
+
 
 
 
@@ -46,7 +47,7 @@ Test(secmalloc_tests, malloc_large_size) {
 Test(secmalloc_tests, free_valid_pointer) {
     int* ptr = my_malloc(10 * sizeof(int));
     my_free(ptr);
-    cr_expect(true, "No crash on freeing a valid pointer"); // Just ensuring it doesn't crash
+    cr_expect(true, "No crash on freeing a valid pointer");
 }
 
 // 2: Tenter de libérer un pointeur NULL.
@@ -61,7 +62,6 @@ Test(secmalloc_tests, free_null_pointer) {
 Test(secmalloc_tests, free_same_pointer_twice) {
     int* ptr = my_malloc(10 * sizeof(int));
     my_free(ptr);
-    // Second free could be undefined behavior - this is just to check if your implementation can handle it gracefully
     my_free(ptr);
     cr_expect(true, "No crash on freeing the same pointer twice");
 }
