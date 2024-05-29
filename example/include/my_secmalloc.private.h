@@ -4,6 +4,7 @@
 #include "my_secmalloc.h"
 
 // sentez vous libre de modifier ce header comme vous le souhaitez
+#define MEMORY_SIZE 10000
 
 void    *my_malloc(size_t size);
 void    my_free(void *ptr);
