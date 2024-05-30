@@ -1,10 +1,11 @@
 #include <criterion/criterion.h>
+#include <criterion/new/assert.h>
 #include <stdlib.h>
 #include "my_secmalloc.private.h"
 #include <stdint.h>
 
 /*
-* ====================================== my_calloc_test ======================================
+* ====================================== my_malloc_test ======================================
 */
 
 Test(my_malloc, test_null_pointer_when_size_is_zero) {
@@ -146,4 +147,51 @@ Test(my_calloc, test_allocation_and_initialization) {
 
     // Deallocate the block of memory
     my_free(ptr);
+}
+
+/*
+* ====================================== my_realloc_test ======================================
+*/
+Test(my_realloc, test_null_ptr_zero_size) {
+  void* ptr = my_realloc(NULL, 0);
+  cr_assert_null(ptr, "Reallocation of NULL pointer with zero size should return NULL");
+}
+
+Test(my_realloc, test_null_ptr_positive_size) {
+  void* ptr = malloc(1); // Allocate some initial memory
+  size_t size = 1024;
+  void* new_ptr = my_realloc(ptr, size);
+  cr_assert_not_null(new_ptr, "Reallocation of NULL pointer with positive size should allocate memory");
+  free(new_ptr);
+  free(ptr); // Free the initially allocated memory
+}
+
+Test(my_realloc, test_non_null_ptr_zero_size) {
+  int* ptr = malloc(sizeof(int));
+  *ptr = 42;
+  void* new_ptr = my_realloc(ptr, 0);
+  cr_assert_null(new_ptr, "Reallocation of non-NULL pointer with zero size should free the memory");
+  free(ptr); // Free memory allocated by malloc
+}
+
+Test(my_realloc, test_non_null_ptr_positive_size) {
+  int* ptr = malloc(sizeof(int));
+  *ptr = 42;
+  size_t new_size = 2 * sizeof(int);
+  void* new_ptr = my_realloc(ptr, new_size);
+  cr_assert_not_null(new_ptr, "Reallocation of non-NULL pointer with positive size should reallocate memory");
+  int* new_int_ptr = (int*)new_ptr;
+  cr_assert_eq(*new_int_ptr, 42, "Reallocated memory should preserve the original data");
+  free(new_ptr);
+}
+
+Test(my_realloc, test_realloc_with_pointer_move) {
+  int* ptr = malloc(sizeof(int));
+  *ptr = 42;
+  size_t new_size = 4 * sizeof(int);
+  void* new_ptr = my_realloc(ptr, new_size);
+  cr_assert_not_null(new_ptr, "Reallocation with pointer move should reallocate memory");
+  int* new_int_ptr = (int*)new_ptr;
+  cr_assert_eq(*new_int_ptr, 42, "Reallocated memory should preserve the original data");
+  free(new_ptr);
 }

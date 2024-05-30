@@ -55,6 +55,7 @@ void* my_malloc(size_t size)
     //Return pointer to the start of allocated block
     return (void*)current;
 }
+
 void my_free(void* ptr)
 {
     //Check if the ptr is valid
@@ -113,12 +114,31 @@ void* my_calloc(size_t nmemb, size_t size)
     return ptr;
 }
 
-void* my_realloc(void* ptr, size_t size)
-{
-    (void)ptr;
-    (void)size;
+void* my_realloc(void* ptr, size_t size) {
+  if (size == 0) {
+    if (ptr != NULL) {
+      free(ptr);
+    }
     return NULL;
+  }
+
+  void* new_ptr = realloc(ptr, size);
+  if (new_ptr == NULL) {
+    // Allocation échouée, gérer l'erreur
+    // (par exemple, afficher un message d'erreur et quitter le programme)
+    return NULL;
+  }
+
+  // Vérifier si le pointeur d'origine a été déplacé lors du réallocation
+  if (ptr != new_ptr) {
+    // Le pointeur a été déplacé, copier les données de l'ancien vers le nouveau pointeur
+    memcpy(new_ptr, ptr, size);
+    free(ptr);
+  }
+
+  return new_ptr;
 }
+
 
 #ifdef DYNAMIC
 void* malloc(size_t size)
