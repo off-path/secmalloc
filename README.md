@@ -44,7 +44,7 @@ If the function succeeds, the return value return pointer to the start of alloca
 - Return the pointer to the allocated space.
 
 # my_free :
-Deallocates the space previously allocated by `my_malloc`, `my_calloc` ot `my_realloc`
+Deallocates the space previously allocated by `[my_malloc](https://github.com/off-path/secmalloc/blob/darius/README.md#syntax)`, `my_calloc` ot `my_realloc`
 
 ## Syntax
 ```c
@@ -54,14 +54,14 @@ void my_free(
 ```
 ## Parameters 
 `[out] void* ptr`
-The returned pointer of an allocated function like `my_malloc`, `my_calloc` ot `my_realloc`. This value can't be NULL.
+The returned pointer of an allocated function like `[my_malloc](https://github.com/off-path/secmalloc/blob/darius/README.md#syntax)`, `my_calloc` ot `my_realloc`. This value can't be NULL.
 
 ## Return value
 If the function secceed there are no returned value.
 
 ## Remarks
 - Check if the ptr is valid
-- Check if the ptr is on allocated memory with my_malloc()
+- Check if the ptr is on allocated memory with [my_malloc](https://github.com/off-path/secmalloc/blob/darius/README.md#syntax)()
 - Retreive if the block is associated to a pointer
 - Check if memory block is valided
 - Add the block to the list of free block
@@ -86,7 +86,7 @@ void* my_calloc(
 The size of the region, in bytes. If the size is NULL, 0 or less the function return NULL.
 
 ## Return value
-If the function succeeds, the return value return a pointer of my_malloc function.
+If the function succeeds, the return value return a pointer of [my_malloc](https://github.com/off-path/secmalloc/blob/darius/README.md#syntax) function.
 
 ## Remarks
 - Valid parametes check
@@ -115,6 +115,6 @@ Return a pointer to the start of tha realocated block.
 
 ## Remarks
 - Retreive the associated block
-- Allocate a new block using my_malloc
+- Allocate a new block using [my_malloc](https://github.com/off-path/secmalloc/blob/darius/README.md#syntax)
 - Copy the data from the old block to the new bloc
 - Free the old block of memory using my_free
