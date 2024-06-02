@@ -11,6 +11,8 @@ typedef struct block {
 } block_t;
 
 block_t* free_list = NULL;
+char* memory = NULL;
+size_t memory_size = 0;
 
 void* my_malloc(size_t size) {
     // Check for minimum size
@@ -18,23 +20,47 @@ void* my_malloc(size_t size) {
         return NULL;
     }
 
-    // Allocate memory using mmap
-    void* ptr = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-    if (ptr == MAP_FAILED) {
-        perror("mmap");
+    // Allocate memory if necessary
+    if (memory == NULL) {
+        memory_size = 10000;
+        memory = mmap(NULL, memory_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+        if (memory == MAP_FAILED) {
+            perror("mmap");
+            return NULL;
+        }
+    }
+
+    // Search for a free block with sufficient size
+    block_t* current = free_list;
+    block_t* prev = NULL;
+    while (current != NULL && current->size < size) {
+        prev = current;
+        current = current->next;
+    }
+
+    // If no block with sufficient size found, return NULL
+    if (current == NULL) {
         return NULL;
     }
 
-    // Create a new block and initialize it
-    block_t* new_block = (block_t*)ptr;
-    new_block->size = size;
-    new_block->next = NULL;
+    // If the block is too big, divide it by two
+    if (current->size > size + sizeof(block_t)) {
+        block_t* new_block = (block_t*)((char*)current + size);
+        new_block->size = current->size - size - sizeof(block_t);
+        new_block->next = current->next;
+        current->size = size;
+        current->next = new_block;
+    }
 
-    // Update the free list
-    free_list = new_block;
+    // Update the free block
+    if (prev == NULL) {
+        free_list = current->next;
+    } else {
+        prev->next = current->next;
+    }
 
     // Return a pointer to the start of the allocated block
-    return (void*)(new_block + 1);
+    return (void*)(current + 1);
 }
 
 void my_free(void* ptr) {
@@ -43,24 +69,41 @@ void my_free(void* ptr) {
         return;
     }
 
+    // Check if the pointer is within the allocated memory
+    if ((char*)ptr < memory || (char*)ptr >= memory + memory_size) {
+        return;
+    }
+
     // Retrieve the associated block
     block_t* block = (block_t*)ptr - 1;
 
-    // Remove the block from the free list
-    if (free_list == block) {
-        free_list = block->next;
-    } else {
-        block_t* current = free_list;
-        while (current->next != block) {
-            current = current->next;
-        }
-        current->next = block->next;
+    // Check if the block is valid
+    if (block->size == 0) {
+        return;
     }
 
-    // Deallocate memory using munmap
-    if (munmap(block, block->size) == -1) {
+    // Add the block to the list of free blocks
+    block->next = free_list;
+    free_list = block;
+
+    // Reset the allocated memory to avoid memory leaks
+    memset(ptr, 0, block->size);
+
+    // Check if the memory can be unmapped
+    block_t* current = free_list;
+    while (current != NULL) {
+        if ((char*)(current + 1) < memory || (char*)(current + 1) >= memory + memory_size) {
+            return;
+        }
+        current = current->next;
+    }
+
+    // Unmap the memory
+    if (munmap(memory, memory_size) == -1) {
         perror("munmap");
     }
+    memory = NULL;
+    memory_size = 0;
 }
 
 void* my_calloc(size_t nmemb, size_t size) {
@@ -71,6 +114,11 @@ void* my_calloc(size_t nmemb, size_t size) {
 
     // Calculate the total size
     size_t total_size = nmemb * size;
+
+    // Check for overflow
+    if (total_size / nmemb != size) {
+        return NULL;
+    }
 
     // Allocate memory using my_malloc
     void* ptr = my_malloc(total_size);
@@ -98,36 +146,19 @@ void* my_realloc(void* ptr, size_t size) {
     // Retrieve the associated block
     block_t* block = (block_t*)ptr - 1;
 
-    // Remove the block from the free list
-    if (free_list == block) {
-        free_list = block->next;
-    } else {
-        block_t* current = free_list;
-        while (current->next != block) {
-            current = current->next;
-        }
-        current->next = block->next;
-    }
-
-    // Reallocate memory using mremap
-    void* new_ptr = mremap(block, block->size, size, MREMAP_MAYMOVE);
-    if (new_ptr == MAP_FAILED) {
-        perror("mremap");
-        // Re-add the block to the free list
-        block->next = free_list;
-        free_list = block;
+    // Allocate a new block of memory using my_malloc
+    void* new_ptr = my_malloc(size);
+    if (new_ptr == NULL) {
         return NULL;
     }
 
-    // Update the block size
-    block_t* new_block = (block_t*)new_ptr;
-    new_block->size = size;
+    // Copy the data from the old block to the new block
+    size_t copy_size = (size_t)(size < block->size ? size : block->size);
+    memcpy(new_ptr, ptr, copy_size);
 
-    // Add the block to the free list
-    new_block->next = free_list;
-    free_list = new_block;
+    // Free the old block of memory using my_free
+    my_free(ptr);
 
     // Return a pointer to the start of the reallocated block
-    return (void*)(new_block + 1);
+    return new_ptr;
 }
-
