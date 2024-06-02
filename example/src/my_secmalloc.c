@@ -1,11 +1,9 @@
 #define _GNU_SOURCE
-#include "my_secmalloc.private.h"
 #include <stdio.h>
-#include <alloca.h>
+#include <stdlib.h>
 #include <unistd.h>
 #include <sys/mman.h>
 #include <string.h>
-#define MEMORY_SIZE 10000
 
 typedef struct block {
     size_t size;
@@ -13,151 +11,123 @@ typedef struct block {
 } block_t;
 
 block_t* free_list = NULL;
-char memory[MEMORY_SIZE];
 
-void* my_malloc(size_t size)
-{
-    //Check minimum size
-    if (size == 0 || size > MEMORY_SIZE) {
+void* my_malloc(size_t size) {
+    // Check for minimum size
+    if (size == 0) {
         return NULL;
     }
 
-    //Search free memory block with sufisent size
-    block_t* current = free_list;
-    block_t* prev = NULL;
-    while (current != NULL && current->size < size) {
-        prev = current;
-        current = current->next;
-    }
-
-    //If no block with sufisent size found return NULL
-    if (current == NULL) {
+    // Allocate memory using mmap
+    void* ptr = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (ptr == MAP_FAILED) {
+        perror("mmap");
         return NULL;
     }
-    
-    //If the block is too big divided by to 2
-    if (current->size > size + sizeof(block_t)) {
-        block_t* new_block = (block_t*)((char*)current + size);
-        new_block->size = current->size - size - sizeof(block_t);
-        new_block->next = current->next;
-        current->size = size;
-        current->next = new_block;
-    }
-    
-    //Update free block
-    if (prev == NULL) {
-        free_list = current->next;
-    }
-    else {
-        prev->next = current->next;
-    }
 
-    //Return pointer to the start of allocated block
-    return (void*)current;
+    // Create a new block and initialize it
+    block_t* new_block = (block_t*)ptr;
+    new_block->size = size;
+    new_block->next = NULL;
+
+    // Update the free list
+    free_list = new_block;
+
+    // Return a pointer to the start of the allocated block
+    return (void*)(new_block + 1);
 }
 
-void my_free(void* ptr)
-{
-    //Check if the ptr is valid
-    if (ptr == NULL){
+void my_free(void* ptr) {
+    // Check if the pointer is valid
+    if (ptr == NULL) {
         return;
     }
 
-    // Check if the ptr is on allocated memory with my_malloc()
-    if (((char*)ptr < memory) || ((char*)ptr > memory + MEMORY_SIZE)) {
-        return;
-    }
-
-    //Retreive if the block is associated to a pointer
+    // Retrieve the associated block
     block_t* block = (block_t*)ptr - 1;
 
-    //Check if memory block is valided
-    if (block->size == 0) {
-        return;
+    // Remove the block from the free list
+    if (free_list == block) {
+        free_list = block->next;
+    } else {
+        block_t* current = free_list;
+        while (current->next != block) {
+            current = current->next;
+        }
+        current->next = block->next;
     }
-    // Add the block to the list of free block
-    block->next = free_list;
-    free_list = block;
 
-    //Renitialize allocated memory with memset() to avoid other memory leak
-    memset(ptr, 0, block->size);
+    // Deallocate memory using munmap
+    if (munmap(block, block->size) == -1) {
+        perror("munmap");
+    }
 }
 
-void* my_calloc(size_t nmemb, size_t size)
-{
-    (void)nmemb;
-    (void)size;
-
-    //Valid parametes check
-    if (nmemb == 0 || size == 0){
+void* my_calloc(size_t nmemb, size_t size) {
+    // Validate parameters
+    if (nmemb == 0 || size == 0) {
         return NULL;
     }
 
-    //Calculate the total memory size to allocate
+    // Calculate the total size
     size_t total_size = nmemb * size;
 
-    //Check total memory size is not too big
-    if (total_size / nmemb != size){
-        return NULL;
-    } 
-
-    //Alloc memory with my_alloc()
+    // Allocate memory using my_malloc
     void* ptr = my_malloc(total_size);
-    if(ptr == NULL){
+    if (ptr == NULL) {
         return NULL;
     }
 
-    // Initilise memory allocated to 0 with memset()
+    // Initialize the memory to zero
     memset(ptr, 0, total_size);
-    
-    //Return
+
+    // Return the pointer
     return ptr;
 }
 
 void* my_realloc(void* ptr, size_t size) {
-  if (size == 0) {
-    if (ptr != NULL) {
-      free(ptr);
+    if (size == 0) {
+        my_free(ptr);
+        return NULL;
     }
-    return NULL;
-  }
 
-  void* new_ptr = realloc(ptr, size);
-  if (new_ptr == NULL) {
-    // Allocation échouée, gérer l'erreur
-    // (par exemple, afficher un message d'erreur et quitter le programme)
-    return NULL;
-  }
+    if (ptr == NULL) {
+        return my_malloc(size);
+    }
 
-  // Vérifier si le pointeur d'origine a été déplacé lors du réallocation
-  if (ptr != new_ptr) {
-    // Le pointeur a été déplacé, copier les données de l'ancien vers le nouveau pointeur
-    memcpy(new_ptr, ptr, size);
-    free(ptr);
-  }
+    // Retrieve the associated block
+    block_t* block = (block_t*)ptr - 1;
 
-  return new_ptr;
+    // Remove the block from the free list
+    if (free_list == block) {
+        free_list = block->next;
+    } else {
+        block_t* current = free_list;
+        while (current->next != block) {
+            current = current->next;
+        }
+        current->next = block->next;
+    }
+
+    // Reallocate memory using mremap
+    void* new_ptr = mremap(block, block->size, size, MREMAP_MAYMOVE);
+    if (new_ptr == MAP_FAILED) {
+        perror("mremap");
+        // Re-add the block to the free list
+        block->next = free_list;
+        free_list = block;
+        return NULL;
+    }
+
+    // Update the block size
+    block_t* new_block = (block_t*)new_ptr;
+    new_block->size = size;
+
+    // Add the block to the free list
+    new_block->next = free_list;
+    free_list = new_block;
+
+    // Return a pointer to the start of the reallocated block
+    return (void*)(new_block + 1);
 }
 
-
-#ifdef DYNAMIC
-void* malloc(size_t size)
-{
-    return my_malloc(size);
-}
-void    free(void* ptr)
-{
-    my_free(ptr);
-}
-void* calloc(size_t nmemb, size_t size)
-{
-    return my_calloc(nmemb, size);
-}
-
-void* realloc(void* ptr, size_t size)
-{
-    return my_realloc(ptr, size);
-
-}
-
-#endif
