@@ -28,6 +28,11 @@ void* my_malloc(size_t size) {
             perror("mmap");
             return NULL;
         }
+
+        // Initialize the free list
+        free_list = (block_t*) memory;
+        free_list->size = memory_size - sizeof(block_t);
+        free_list->next = NULL;
     }
 
     // Search for a free block with sufficient size
