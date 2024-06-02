@@ -21,8 +21,16 @@ char memory[MEMORY_SIZE];
 
 # my_malloc :
 Allocates size bytes of uninitialized storage. 
+
+## Syntax
+```c
+void* my_malloc(
+    [int]    SIZE_T size
+);
+```
 ## Parameters
 `[in] size_t size`
+Size to allocate. This value should not be NULL, equal to 0 or less.
 
 ## Return value
 If the function succeeds, the return value return pointer to the start of allocated block.
@@ -37,9 +45,16 @@ If the function succeeds, the return value return pointer to the start of alloca
 
 # my_free :
 Deallocates the space previously allocated by `my_malloc`, `my_calloc` ot `my_realloc`
+
+## Syntax
+```c
+void my_free(
+    [in]    void* ptr
+);
+```
 ## Parameters 
 `[out] void* ptr`
-The returned pointer of an allocated function like `my_malloc`, `my_calloc` ot `my_realloc`.
+The returned pointer of an allocated function like `my_malloc`, `my_calloc` ot `my_realloc`. This value can't be NULL.
 
 ## Return value
 If the function secceed there are no returned value.
@@ -55,8 +70,17 @@ If the function secceed there are no returned value.
 # my_calloc :
 Allocates memory for an array of num objects of size and initializes all bytes in the allocated storage to zero.
 
+## Syntax
+```c
+void* my_calloc(
+    [in]    SIZE_T nmemb,
+    [in]    INT size_t size
+);
+```
+
+
 ## Parameters 
-`nmemb`
+`[in] nmemb`
 
 `[in] size`
 The size of the region, in bytes. If the size is NULL, 0 or less the function return NULL.
@@ -70,3 +94,27 @@ If the function succeeds, the return value return a pointer of my_malloc functio
 - Check total memory size is not too big
 - Alloc memory with my_alloc()
 - Initilise memory allocated to 0 with memset()    
+
+# my_realloc :
+## Syntax
+```c
+void* my_realloc(
+    [in]    void* ptr,
+    [in]    INT size_t size
+);
+```
+
+## Parameters 
+`[in] ptr`
+Pointer of the malloc block to reallocate.
+`[in] size`
+The size of the region, in bytes. If the size is NULL, 0 or less the function return NULL.
+
+## Return value
+Return a pointer to the start of tha realocated block.
+
+## Remarks
+- Retreive the associated block
+- Allocate a new block using my_malloc
+- Copy the data from the old block to the new bloc
+- Free the old block of memory using my_free
