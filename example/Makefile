@@ -9,7 +9,6 @@ all: ${LIB}
 
 ${LIB} : CFLAGS += -fpic -shared
 ${LIB} : ${OBJS}
-	$(LINK.c) -shared $^ $(LDLIBS) -o lib/$@
 
 ${SLIB}: ${OBJS}
 
@@ -32,7 +31,7 @@ test: build_test
 	LD_LIBRARY_PATH=./lib test/test
 
 
-.PHONY: all clean build_test dynamic test static distclean
+//.PHONY: all clean build_test dynamic test static distclean
 
 %.so:
 	$(LINK.c) -shared $^ $(LDLIBS) -o $@
