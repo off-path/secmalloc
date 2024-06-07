@@ -114,8 +114,6 @@ void my_free(void* ptr) {
 
 void* my_calloc(size_t nmemb, size_t size)
 {
-    (void)nmemb;
-    (void)size;
 
     //Valid parametes check
     if (nmemb == 0 || size == 0) return NULL;
@@ -123,8 +121,8 @@ void* my_calloc(size_t nmemb, size_t size)
     //Calculate the total memory size to allocate
     size_t total_size = nmemb * size;
 
-    //Check total memory size is not too big
-    if (total_size / nmemb != size) return NULL; 
+    // Check for overflow
+    if (nmemb != 0 && total_size / nmemb != size) return NULL; 
 
     //Alloc memory with my_alloc()
     void* ptr = my_malloc(total_size);
@@ -147,6 +145,13 @@ void* my_realloc(void* ptr, size_t size) {
 
     // Cast ptr to block_t pointer
     block_t* block = (block_t*)ptr - 1;
+
+    // Check if ptr points to a valid block
+    if ((char*)block < memory || (char*)block >= memory + MEMORY_SIZE) {
+        fprintf(stderr, "Error: Attempt to realloc memory outside allocated memory\n");
+        return NULL;
+    }
+    
     size_t old_size = block->size;
 
     // Allocate new memory block
@@ -161,6 +166,8 @@ void* my_realloc(void* ptr, size_t size) {
     my_free(ptr);
     return new_ptr;
 }
+
+
 #ifdef DYNAMIC
 void* malloc(size_t size)
 {
