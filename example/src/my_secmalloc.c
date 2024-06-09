@@ -1,36 +1,58 @@
-#define _GNU_SOURCE
-#include "my_secmalloc.private.h"
 #include <stdio.h>
-#include <alloca.h>
-#include <unistd.h>
-#include <sys/mman.h>
+#include <stdlib.h>
 #include <string.h>
+#include <time.h>
+
 #define MEMORY_SIZE 10000
+#define CANARY_VALUE 0xDEADBEEF
 
 typedef struct block {
     size_t size;
+    size_t canary;
     struct block* next;
 } block_t;
 
 block_t* free_list = NULL;
 char memory[MEMORY_SIZE];
 
-void* my_malloc(size_t size)
-{
-    // Check minimum size
-    if (size == 0 || size > MEMORY_SIZE - sizeof(block_t)) return NULL;
+size_t generate_canary() {
+    return (size_t)rand();
+}
 
-    // Align size to the nearest multiple of sizeof(block_t)
-    size = (size + sizeof(block_t) - 1) & ~(sizeof(block_t) - 1);
+void insert_canary(block_t* block) {
+    block->canary = CANARY_VALUE;
+    size_t* end_canary = (size_t*)((char*)block + sizeof(block_t) + block->size);
+    *end_canary = CANARY_VALUE;
+}
 
-    // Initialize free_list if it's not already initialized
+int check_canary(block_t* block) {
+    if (block->canary != CANARY_VALUE) {
+        return 0; // Canari au début du bloc corrompu
+    }
+    size_t* end_canary = (size_t*)((char*)block + sizeof(block_t) + block->size);
+    if (*end_canary != CANARY_VALUE) {
+        return 0; // Canari à la fin du bloc corrompu
+    }
+    return 1; // Canaries valides
+}
+
+
+void* my_malloc(size_t size) {
+    if (size == 0 || size > MEMORY_SIZE - sizeof(block_t) - 2 * sizeof(size_t)) {
+        return NULL;
+    }
+
+    size_t total_size = size + sizeof(block_t) + 2 * sizeof(size_t);
+    if (total_size > MEMORY_SIZE) {
+        return NULL;
+    }
+
     if (free_list == NULL) {
         free_list = (block_t*)memory;
-        free_list->size = MEMORY_SIZE - sizeof(block_t);
+        free_list->size = MEMORY_SIZE - sizeof(block_t) - 2 * sizeof(size_t);
         free_list->next = NULL;
     }
 
-    // Search for a free memory block with sufficient size
     block_t* current = free_list;
     block_t* prev = NULL;
     while (current != NULL && current->size < size) {
@@ -38,51 +60,50 @@ void* my_malloc(size_t size)
         current = current->next;
     }
 
-    // If no block with sufficient size found, return NULL
-    if (current == NULL) return NULL;
+    if (current == NULL) {
+        return NULL;
+    }
 
-    // If the block is too big, split it
-    if (current->size > size + sizeof(block_t)) {
-        block_t* new_block = (block_t*)((char*)current + size + sizeof(block_t));
-        new_block->size = current->size - size - sizeof(block_t);
+    if (current->size > total_size + sizeof(block_t) + 2 * sizeof(size_t)) {
+        block_t* new_block = (block_t*)((char*)current + total_size);
+        new_block->size = current->size - total_size;
         new_block->next = current->next;
         current->size = size;
         current->next = new_block;
     }
 
-    // Update free block
     if (prev == NULL) {
         free_list = current->next;
     } else {
         prev->next = current->next;
     }
 
-    // Return pointer to the start of allocated block
-    return (void*)(current + 1);
+    current->canary = CANARY_VALUE;
+    insert_canary(current);
+
+    void* user_ptr = (void*)((char*)current + sizeof(block_t) + sizeof(size_t));
+    memset(user_ptr, 0, size);
+
+    return user_ptr;
 }
 
 void my_free(void* ptr) {
-    if (ptr == NULL) return;
+    if (ptr == NULL) {
+        return;
+    }
 
-    // Cast ptr to block_t pointer
-    block_t* block = (block_t*)ptr - 1;
+    block_t* block = (block_t*)((char*)ptr - sizeof(size_t) - sizeof(block_t));
 
-    // Check if ptr points to a valid block
     if ((char*)block < memory || (char*)block >= memory + MEMORY_SIZE) {
         fprintf(stderr, "Error: Attempt to free memory outside allocated memory\n");
         return;
     }
 
-    // Check if the block is already freed
-    if (block->size == 0) {
-        fprintf(stderr, "Error: Attempt to free unallocated memory\n");
+    if (!check_canary(block)) {
+        fprintf(stderr, "Error: Memory corruption detected (canary mismatch)\n");
         return;
     }
 
-    // Mark the block as free
-    block->size = 0;
-
-    // Merge with adjacent free blocks if possible
     block_t* current = free_list;
     block_t* prev = NULL;
     while (current != NULL && current < block) {
@@ -90,9 +111,8 @@ void my_free(void* ptr) {
         current = current->next;
     }
 
-    // Merge with previous block if contiguous
-    if (prev != NULL && (char*)prev + prev->size + sizeof(block_t) == (char*)block) {
-        prev->size += block->size + sizeof(block_t);
+    if (prev != NULL && (char*)prev + prev->size + sizeof(block_t) + 2 * sizeof(size_t) == (char*)block) {
+        prev->size += block->size + sizeof(block_t) + 2 * sizeof(size_t);
         block = prev;
     } else {
         block->next = current;
@@ -103,35 +123,28 @@ void my_free(void* ptr) {
         }
     }
 
-    // Merge with next block if contiguous
-    if (current != NULL && (char*)block + block->size + sizeof(block_t) == (char*)current) {
-        block->size += current->size + sizeof(block_t);
+    if (current != NULL && (char*)block + block->size + sizeof(block_t) + 2 * sizeof(size_t) == (char*)current) {
+        block->size += current->size + sizeof(block_t) + 2 * sizeof(size_t);
         block->next = current->next;
     }
 }
 
+void* my_calloc(size_t nmemb, size_t size) {
+    if (nmemb == 0 || size == 0) {
+        return NULL;
+    }
 
-
-void* my_calloc(size_t nmemb, size_t size)
-{
-
-    //Valid parametes check
-    if (nmemb == 0 || size == 0) return NULL;
-
-    //Calculate the total memory size to allocate
     size_t total_size = nmemb * size;
+    if (total_size / nmemb != size) {
+        return NULL;
+    }
 
-    // Check for overflow
-    if (nmemb != 0 && total_size / nmemb != size) return NULL; 
-
-    //Alloc memory with my_alloc()
     void* ptr = my_malloc(total_size);
-    if(ptr == NULL) return NULL;
+    if (ptr == NULL) {
+        return NULL;
+    }
 
-    // Initilise memory allocated to 0 with memset()
     memset(ptr, 0, total_size);
-    
-    //Return
     return ptr;
 }
 
@@ -141,51 +154,43 @@ void* my_realloc(void* ptr, size_t size) {
         return NULL;
     }
 
-    if (ptr == NULL) return my_malloc(size);
-
-    // Cast ptr to block_t pointer
-    block_t* block = (block_t*)ptr - 1;
-
-    // Check if ptr points to a valid block
-    if ((char*)block < memory || (char*)block >= memory + MEMORY_SIZE) {
-        fprintf(stderr, "Error: Attempt to realloc memory outside allocated memory\n");
-        return NULL;
+    if (ptr == NULL) {
+        return my_malloc(size);
     }
-    
+
+    block_t* block = (block_t*)((char*)ptr - sizeof(size_t) - sizeof(block_t));
     size_t old_size = block->size;
 
-    // Allocate new memory block
+    if (old_size >= size) {
+        return ptr;
+    }
+
     void* new_ptr = my_malloc(size);
-    if (new_ptr == NULL) return NULL;
+    if (new_ptr == NULL) {
+        return NULL;
+    }
 
-    // Copy data from old block to new block
-    size_t copy_size = (old_size < size) ? old_size : size;
-    memcpy(new_ptr, ptr, copy_size);
-
-    // Free old block
+    // Copy the old data to the new block
+    memcpy(new_ptr, ptr, old_size);
     my_free(ptr);
+
     return new_ptr;
 }
 
-
 #ifdef DYNAMIC
-void* malloc(size_t size)
-{
+void* malloc(size_t size) {
     return my_malloc(size);
 }
-void    free(void* ptr)
-{
+
+void free(void* ptr) {
     my_free(ptr);
 }
-void* calloc(size_t nmemb, size_t size)
-{
+
+void* calloc(size_t nmemb, size_t size) {
     return my_calloc(nmemb, size);
 }
 
-void* realloc(void* ptr, size_t size)
-{
+void* realloc(void* ptr, size_t size) {
     return my_realloc(ptr, size);
-
 }
-
 #endif
