@@ -1,4 +1,5 @@
 #define _GNU_SOURCE
+#define CANARY 0xDEADBEEF
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -8,6 +9,7 @@
 typedef struct block {
     size_t size;
     struct block* next;
+    unsigned long canary_after; // Add canary after the block
 } block_t;
 
 block_t* free_list = NULL;
@@ -33,6 +35,9 @@ void* my_malloc(size_t size) {
         free_list = (block_t*) memory;
         free_list->size = memory_size - sizeof(block_t);
         free_list->next = NULL;
+
+        // Add canary after the block
+        free_list->canary_after = CANARY;
     }
 
     // Search for a free block with sufficient size
@@ -55,6 +60,9 @@ void* my_malloc(size_t size) {
         new_block->next = current->next;
         current->size = size;
         current->next = new_block;
+
+        // Add canary after the new block
+        new_block->canary_after = CANARY;
     }
 
     // Update the free block
@@ -64,8 +72,13 @@ void* my_malloc(size_t size) {
         prev->next = current->next;
     }
 
+    // Add canary before the block
+    void* ptr = (void*)(current + 1);
+    *(unsigned long*)ptr = CANARY;
+    ptr = (void*)((char*)ptr + sizeof(unsigned long));
+
     // Return a pointer to the start of the allocated block
-    return (void*)(current + 1);
+    return ptr;
 }
 
 void my_free(void* ptr) {
@@ -74,16 +87,28 @@ void my_free(void* ptr) {
         return;
     }
 
-    // Check if the pointer is within the allocated memory
-    if ((char*)ptr < memory || (char*)ptr >= memory + memory_size) {
-        return;
-    }
-
     // Retrieve the associated block
     block_t* block = (block_t*)ptr - 1;
 
     // Check if the block is valid
     if (block->size == 0) {
+        return;
+    }
+
+    // Check if the pointer is within the allocated memory
+    if ((char*)ptr < memory || (char*)ptr >= memory + memory_size) {
+        return;
+    }
+
+    // Check canary before block
+    if (*(unsigned long*)((char*)ptr - sizeof(unsigned long)) != CANARY) {
+        printf("Memory corruption detected: canary before block is invalid\n");
+        return;
+    }
+
+    // Check canary after block
+    if (block->canary_after != CANARY) {
+        printf("Memory corruption detected: canary after block is invalid\n");
         return;
     }
 
@@ -167,7 +192,6 @@ void* my_realloc(void* ptr, size_t size) {
     // Return a pointer to the start of the reallocated block
     return new_ptr;
 }
-
 
 #ifdef DYNAMIC
 void* malloc(size_t size)
