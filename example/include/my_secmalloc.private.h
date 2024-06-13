@@ -1,13 +1,14 @@
-#ifndef _SECMALLOC_PRIVATE_H
-#define _SECMALLOC_PRIVATE_H
+#ifndef __MY_ALLOC_PRIVATE_H
+#define __MY_ALLOC_PRIVATE_H
 
 #include "my_secmalloc.h"
+#include <stdint.h>
+#include <sys/mman.h>
+#include <unistd.h>
 
-// sentez vous libre de modifier ce header comme vous le souhaitez
-#define MEMORY_SIZE 10000
+typedef union Premap_s {
+    uintptr_t align;
+    size_t allocsize;
+} Premap;
 
-void    *my_malloc(size_t size);
-void    my_free(void *ptr);
-void    *my_calloc(size_t nmemb, size_t size);
-void    *my_realloc(void *ptr, size_t size);
 #endif
