@@ -145,3 +145,195 @@ Test(my_free, valid_free) {
     cr_assert(strstr(log_content, "free: size=0") != NULL, "Log entry for my_free not found");
     free(log_content);
 }
+
+/*
+ * Test cases for heap overflow
+ */
+Test(my_malloc, heap_overflow) {
+    size_t size = MEMORY_SIZE - sizeof(block_t) - 2 * sizeof(size_t);
+    void* ptr = my_malloc(size);
+    cr_assert_not_null(ptr, "my_malloc failed to allocate maximum allowable memory");
+
+    char* overflow_ptr = (char*)ptr + size;
+    *overflow_ptr = 'A';  // Devrait corrompre la mémoire
+    cr_expect_eq(*(char*)((char*)ptr + size), 'A', "Heap overflow detected");
+
+    my_free(ptr);
+}
+
+/*
+ * Test cases for double free
+ */
+Test(my_free, double_free) {
+    void* ptr = my_malloc(100);
+    cr_assert_not_null(ptr, "my_malloc failed to allocate memory");
+
+    my_free(ptr);
+
+    // Double free should be handled
+    FILE *stderr_backup = stderr;
+    stderr = fopen("/dev/null", "w");
+    my_free(ptr);
+    fclose(stderr);
+    stderr = stderr_backup;
+
+    char* log_content = read_log_file("memory.log");
+    cr_assert_not_null(log_content, "Failed to read log file");
+
+    cr_assert(strstr(log_content, "free: size=0") != NULL, "Log entry for my_free not found");
+    free(log_content);
+}
+
+/*
+ * Test cases for memory leak
+ */
+Test(memory_leak, no_leak) {
+    void* ptr1 = my_malloc(100);
+    cr_assert_not_null(ptr1, "my_malloc failed to allocate memory");
+    void* ptr2 = my_malloc(200);
+    cr_assert_not_null(ptr2, "my_malloc failed to allocate memory");
+
+    my_free(ptr1);
+    my_free(ptr2);
+
+    // Vérification que la liste libre contient tous les blocs
+    block_t* current = free_list;
+    size_t total_free_size = 0;
+    while (current != NULL) {
+        total_free_size += current->size + sizeof(block_t) + 2 * sizeof(size_t);
+        current = current->next;
+    }
+    cr_assert_eq(total_free_size, MEMORY_SIZE, "Memory leak detected, total free size does not match");
+}
+
+/*
+ * Test cases for heap underflow
+ */
+Test(my_malloc, heap_underflow) {
+    void* ptr = my_malloc(100);
+    cr_assert_not_null(ptr, "my_malloc failed to allocate memory");
+
+    char* underflow_ptr = (char*)ptr - 1;
+    *underflow_ptr = 'A';  // This should not corrupt the memory
+    cr_expect_eq(*(char*)((char*)ptr - 1), 'A', "Heap underflow detected");
+
+    my_free(ptr);
+}
+
+/*
+*   TEST super big MALLOC
+*/
+Test(my_malloc, test_null_pointer_when_size_exceeds_memory_size) {
+    void* ptr = my_malloc(1500000);
+    cr_assert_null(ptr, "Expected null pointer when size exceeds MEMORY_SIZE");
+}
+
+/*
+* TEST super small MALLOC
+*/
+Test(my_malloc, minimal_allocation) {
+    void* ptr = my_malloc(1);
+    cr_assert_not_null(ptr, "my_malloc failed to allocate minimal memory");
+    my_free(ptr);
+}
+
+/*
+* TEST Multi allocation
+*/
+Test(my_malloc, multiple_allocations) {
+    void* ptr1 = my_malloc(100);
+    void* ptr2 = my_malloc(200);
+    void* ptr3 = my_malloc(300);
+    cr_assert_not_null(ptr1, "my_malloc failed to allocate memory for ptr1");
+    cr_assert_not_null(ptr2, "my_malloc failed to allocate memory for ptr2");
+    cr_assert_not_null(ptr3, "my_malloc failed to allocate memory for ptr3");
+
+    my_free(ptr1);
+    my_free(ptr2);
+    my_free(ptr3);
+}
+
+/*
+* TEST Calloc zero ellements
+*/
+Test(my_calloc, zero_elements) {
+    void* ptr = my_calloc(0, 100);
+    cr_assert_null(ptr, "my_calloc(0, 100) should return NULL");
+}
+
+/*
+* BIG Calloc
+*/
+Test(my_calloc, large_allocation) {
+    void* ptr = my_calloc(1000, 10);
+    cr_assert_not_null(ptr, "my_calloc failed to allocate memory");
+    for (size_t i = 0; i < 10000; ++i) {
+        cr_assert_eq(((char*)ptr)[i], 0, "Memory not zero-initialized");
+    }
+    my_free(ptr);
+}
+
+// Mini realloc
+Test(my_realloc, shrink_allocation) {
+    int* ptr = my_malloc(10 * sizeof(int));
+    for (int i = 0; i < 10; ++i) ptr[i] = i;
+
+    int* new_ptr = my_realloc(ptr, 5 * sizeof(int));
+    cr_assert_not_null(new_ptr, "my_realloc failed to reallocate memory to smaller size");
+    for (int i = 0; i < 5; ++i) {
+        cr_assert_eq(new_ptr[i], i, "Data not preserved during reallocation");
+    }
+    my_free(new_ptr);
+}
+
+// bigger realloc
+Test(my_realloc, expand_allocation) {
+    int* ptr = my_malloc(5 * sizeof(int));
+    for (int i = 0; i < 5; ++i) ptr[i] = i;
+
+    int* new_ptr = my_realloc(ptr, 10 * sizeof(int));
+    cr_assert_not_null(new_ptr, "my_realloc failed to reallocate memory to larger size");
+    for (int i = 0; i < 5; ++i) {
+        cr_assert_eq(new_ptr[i], i, "Data not preserved during reallocation");
+    }
+    my_free(new_ptr);
+}
+
+//free null ptr
+Test(my_free, free_null_pointer) {
+    my_free(NULL);
+    // Test pas de crash
+}
+
+// Canary test Corruption
+Test(my_malloc, canary_corruption) {
+    void* ptr = my_malloc(100);
+    cr_assert_not_null(ptr, "my_malloc failed to allocate memory");
+
+    // Corrupt the canary
+    block_t* block = (block_t*)((char*)ptr - sizeof(size_t) - sizeof(block_t));
+    block->canary = 0xBADF00D;
+
+    FILE *stderr_backup = stderr;
+    stderr = fopen("/dev/null", "w");
+    my_free(ptr);
+    fclose(stderr);
+    stderr = stderr_backup;
+}
+
+//Fragmentation memory test
+Test(memory_management, fragmentation) {
+    void* ptr1 = my_malloc(100);
+    void* ptr2 = my_malloc(200);
+    void* ptr3 = my_malloc(300);
+    cr_assert_not_null(ptr1, "my_malloc failed to allocate memory for ptr1");
+    cr_assert_not_null(ptr2, "my_malloc failed to allocate memory for ptr2");
+    cr_assert_not_null(ptr3, "my_malloc failed to allocate memory for ptr3");
+
+    my_free(ptr2);
+    void* ptr4 = my_malloc(150);
+    cr_assert_not_null(ptr4, "my_malloc failed to allocate memory for ptr4 after fragmentation");
+    my_free(ptr1);
+    my_free(ptr3);
+    my_free(ptr4);
+}
