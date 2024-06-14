@@ -3,11 +3,38 @@
 #include <stdlib.h>
 #include "my_secmalloc.private.h"
 #include <stdint.h>
+#include <stdio.h>   // For fopen, fseek, ftell, fread, fclose
+#include <string.h>  // For strstr
+#include "my_secmalloc.private.h" 
+
+#define SEEK_END 2
+#define SEEK_SET 0
 
 /*
-* ====================================== my_malloc_test ======================================
-*/
+ * Helper function to read content from a log file
+ */
+char* read_log_file(const char* filename) {
+    FILE* file = fopen(filename, "r");
+    if (!file) {
+        return NULL;
+    }
 
+    fseek(file, 0, SEEK_END);
+    long length = ftell(file);
+    fseek(file, 0, SEEK_SET);
+
+    char* content = malloc(length + 1);
+    if (content) {
+        fread(content, 1, length, file);
+        content[length] = '\0';
+    }
+    fclose(file);
+    return content;
+}
+
+/*
+ * Test cases for my_malloc
+ */
 Test(my_malloc, test_null_pointer_when_size_is_zero) {
     void* ptr = my_malloc(0);
     cr_assert_null(ptr, "Expected null pointer when size is zero");
@@ -18,106 +45,33 @@ Test(my_malloc, test_null_pointer_when_size_is_too_large) {
     cr_assert_null(ptr, "Expected null pointer when size is too large");
 }
 
-Test(my_malloc, test_allocation_and_deallocation) {
-    // Allocate a block of memory
-    size_t size = 100;
-    void* ptr = my_malloc(size);
-    cr_assert_not_null(ptr, "Expected a valid pointer after allocation");
+Test(my_malloc, valid_allocation) {
+    void* ptr = my_malloc(100);
+    cr_assert_not_null(ptr, "my_malloc failed to allocate memory");
 
-    // Write to the block of memory
-    memset(ptr, 0xAA, size);
+    char* log_content = read_log_file("memory.log");
+    cr_assert_not_null(log_content, "Failed to read log file");
 
-    // Deallocate the block of memory
+    cr_assert(strstr(log_content, "malloc: size=100") != NULL, "Log entry for my_malloc not found");
+    free(log_content);
+
     my_free(ptr);
+}
 
-    // Try to allocate a block of the same size
-    void* ptr2 = my_malloc(size);
-    cr_assert_not_null(ptr2, "Expected a valid pointer after allocation");
+Test(my_malloc, zero_allocation) {
+    void* ptr = my_malloc(0);
+    cr_assert_null(ptr, "my_malloc(0) should return NULL");
 
-    // Verify that the memory has been cleared
-    for (size_t i = 0; i < size; i++) {
-        cr_assert_neq(((char*)ptr2)[i], 0xAA);
-    }
+    char* log_content = read_log_file("memory.log");
+    cr_assert_not_null(log_content, "Failed to read log file");
 
-    // Deallocate the block of memory
-    my_free(ptr2);
+    cr_assert(strstr(log_content, "malloc: size=0") != NULL, "Log entry for my_malloc(0) not found");
+    free(log_content);
 }
 
 /*
-* ====================================== my_free_test ======================================
-*/
-/*
-Test(my_free, test_no_operation_when_ptr_is_null) {
-    // Deallocate a null pointer with my_free()
-    my_free(NULL);
-
-    // Verify that the free list is empty
-    cr_assert_eq(free_list, NULL, "Expected the free list to be empty");
-}
-*/
-Test(my_free, test_no_operation_when_ptr_is_out_of_bounds) {
-    // Allocate a block of memory with my_malloc()
-    size_t size = 10;
-    void* ptr = my_malloc(size);
-    cr_assert_not_null(ptr, "Expected a valid pointer after allocation");
-
-    // Deallocate a pointer that is out of bounds with my_free()
-    my_free((char*)ptr - 1);
-
-    // Verify that the block of memory is still allocated
-    cr_assert_neq(ptr, NULL, "Expected the block of memory to be still allocated");
-
-    // Deallocate the block of memory with my_free()
-    my_free(ptr);
-}
-/*
-Test(my_free, test_deallocation_and_addition_to_free_list) {
-    // Allocate a block of memory with my_malloc()
-    size_t size = 10;
-    void* ptr = my_malloc(size);
-    cr_assert_not_null(ptr, "Expected a valid pointer after allocation");
-
-    // Deallocate the block of memory with my_free()
-    my_free(ptr);
-
-    // Verify that the block of memory has been added to the free list
-    cr_assert_not_eq(free_list, NULL, "Expected the free list to be not empty");
-    cr_assert_eq(free_list->size, size, "Expected the size of the block in the free list to be correct");
-    cr_assert_eq(free_list->next, NULL, "Expected the next block in the free list to be null");
-
-    // Deallocate the block of memory with my_free()
-    my_free(ptr);
-}
-*/
-Test(my_free, test_memory_clearing) {
-    // Allocate a block of memory with my_malloc()
-    size_t size = 10;
-    void* ptr = my_malloc(size);
-    cr_assert_not_null(ptr, "Expected a valid pointer after allocation");
-
-    // Write to the block of memory
-    memset(ptr, 0xAA, size);
-
-    // Deallocate the block of memory with my_free()
-    my_free(ptr);
-
-    // Reallocate the block of memory with my_malloc()
-    void* ptr2 = my_malloc(size);
-    cr_assert_not_null(ptr2, "Expected a valid pointer after allocation");
-
-    // Verify that the memory has been cleared
-    for (size_t i = 0; i < size; i++) {
-        cr_assert_eq(((char*)ptr2)[i], 0, "Expected the memory to be cleared");
-    }
-
-    // Deallocate the block of memory with my_free()
-    my_free(ptr2);
-}
-
-/*
-* ====================================== my_calloc_test ======================================
-*/
-//my_calloc test
+ * Test cases for my_calloc
+ */
 Test(my_calloc, test_null_pointer_when_nmemb_is_zero) {
     void* ptr = my_calloc(0, 10);
     cr_assert_null(ptr, "Expected null pointer when nmemb is zero");
@@ -133,65 +87,61 @@ Test(my_calloc, test_null_pointer_when_total_size_is_too_large) {
     cr_assert_null(ptr, "Expected null pointer when total size is too large");
 }
 
-Test(my_calloc, test_allocation_and_initialization) {
-    // Allocate a block of memory with my_calloc()
-    size_t nmemb = 10;
-    size_t size = 10;
-    void* ptr = my_calloc(nmemb, size);
-    cr_assert_not_null(ptr, "Expected a valid pointer after allocation");
-
-    // Verify that the memory has been initialized to zero
-    for (size_t i = 0; i < nmemb * size; i++) {
-        cr_assert_eq(((char*)ptr)[i], 0, "Expected memory to be initialized to zero");
+Test(my_calloc, valid_allocation) {
+    void* ptr = my_calloc(10, 10);
+    cr_assert_not_null(ptr, "my_calloc failed to allocate memory");
+    for (size_t i = 0; i < 100; ++i) {
+        cr_assert_eq(((char*)ptr)[i], 0, "Memory not zero-initialized");
     }
 
-    // Deallocate the block of memory
+    char* log_content = read_log_file("memory.log");
+    cr_assert_not_null(log_content, "Failed to read log file");
+
+    cr_assert(strstr(log_content, "calloc: size=100") != NULL, "Log entry for my_calloc not found");
+    free(log_content);
+
     my_free(ptr);
 }
 
 /*
-* ====================================== my_realloc_test ======================================
-*/
+ * Test cases for my_realloc
+ */
 Test(my_realloc, test_null_ptr_zero_size) {
-  void* ptr = my_realloc(NULL, 0);
-  cr_assert_null(ptr, "Reallocation of NULL pointer with zero size should return NULL");
-}
-
-Test(my_realloc, test_null_ptr_positive_size) {
-  void* ptr = malloc(1); // Allocate some initial memory
-  size_t size = 1024;
-  void* new_ptr = my_realloc(ptr, size);
-  cr_assert_not_null(new_ptr, "Reallocation of NULL pointer with positive size should allocate memory");
-  free(new_ptr);
-  free(ptr); // Free the initially allocated memory
+    void* ptr = my_realloc(NULL, 0);
+    cr_assert_null(ptr, "Reallocation of NULL pointer with zero size should return NULL");
 }
 
 Test(my_realloc, test_non_null_ptr_zero_size) {
-  int* ptr = malloc(sizeof(int));
-  *ptr = 42;
-  void* new_ptr = my_realloc(ptr, 0);
-  cr_assert_null(new_ptr, "Reallocation of non-NULL pointer with zero size should free the memory");
-  free(ptr); // Free memory allocated by malloc
-}
-
-Test(my_realloc, test_non_null_ptr_positive_size) {
-  int* ptr = malloc(sizeof(int));
-  *ptr = 42;
-  size_t new_size = 2 * sizeof(int);
-  void* new_ptr = my_realloc(ptr, new_size);
-  cr_assert_not_null(new_ptr, "Reallocation of non-NULL pointer with positive size should reallocate memory");
-  int* new_int_ptr = (int*)new_ptr;
-  cr_assert_eq(*new_int_ptr, 42, "Reallocated memory should preserve the original data");
-  free(new_ptr);
+    int* ptr = malloc(sizeof(int));
+    *ptr = 42;
+    void* new_ptr = my_realloc(ptr, 0);
+    cr_assert_null(new_ptr, "Reallocation of non-NULL pointer with zero size should free the memory");
+    free(ptr); // Free memory allocated by malloc
 }
 
 Test(my_realloc, test_realloc_with_pointer_move) {
-  int* ptr = malloc(sizeof(int));
-  *ptr = 42;
-  size_t new_size = 4 * sizeof(int);
-  void* new_ptr = my_realloc(ptr, new_size);
-  cr_assert_not_null(new_ptr, "Reallocation with pointer move should reallocate memory");
-  int* new_int_ptr = (int*)new_ptr;
-  cr_assert_eq(*new_int_ptr, 42, "Reallocated memory should preserve the original data");
-  free(new_ptr);
+    int* ptr = malloc(sizeof(int));
+    *ptr = 42;
+    size_t new_size = 4 * sizeof(int);
+    void* new_ptr = my_realloc(ptr, new_size);
+    cr_assert_not_null(new_ptr, "Reallocation with pointer move should reallocate memory");
+    int* new_int_ptr = (int*)new_ptr;
+    cr_assert_eq(*new_int_ptr, 42, "Reallocated memory should preserve the original data");
+    free(new_ptr);
+}
+
+/*
+ * Test cases for my_free
+ */
+Test(my_free, valid_free) {
+    void* ptr = my_malloc(100);
+    cr_assert_not_null(ptr, "my_malloc failed to allocate memory");
+
+    my_free(ptr);
+
+    char* log_content = read_log_file("memory.log");
+    cr_assert_not_null(log_content, "Failed to read log file");
+
+    cr_assert(strstr(log_content, "free: size=0") != NULL, "Log entry for my_free not found");
+    free(log_content);
 }

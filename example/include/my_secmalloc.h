@@ -7,4 +7,7 @@ void    *malloc(size_t size);
 void    free(void *ptr);
 void    *calloc(size_t nmemb, size_t size);
 void    *realloc(void *ptr, size_t size);
+void    log_message(const char *format, ...);
+void    log_operation(const char *operation, size_t size, void *start, void *end);
+
 #endif

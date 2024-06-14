@@ -1,0 +1,9 @@
+malloc: size=18446744073709551615, start=41993, end=41993
+malloc: size=100, start=40526, end=40534
+calloc: size=100, start=40518, end=40590
+malloc: size=100, start=41492, end=41500
+malloc: size=10001, start=40940, end=40940
+malloc: size=0, start=41708, end=41708
+malloc: size=100, start=42913, end=42921
+malloc: size=0, start=42011, end=42011
+realloc (no move): size=16, start=41756, end=41764
