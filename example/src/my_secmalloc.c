@@ -6,8 +6,8 @@
 #include <sys/mman.h>
 #include <unistd.h>
 
-#define MEMORY_SIZE 10000
-#define CANARY_VALUE 0xDEADBEEF
+#define MEMORY_SIZE 10000 //Taille mémoire gérer par  
+#define CANARY_VALUE 0xDEADBEEF //Valeur du Canary
 
 typedef struct block {
     size_t size;
