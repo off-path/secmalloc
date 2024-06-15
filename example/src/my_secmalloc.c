@@ -3,6 +3,8 @@
 #include <string.h>
 #include <time.h>
 #include <stdarg.h>
+#include <sys/mman.h>
+#include <unistd.h>
 
 #define MEMORY_SIZE 10000
 #define CANARY_VALUE 0xDEADBEEF
@@ -13,11 +15,13 @@ typedef struct block {
     struct block* next;
 } block_t;
 
-block_t* free_list = NULL;
-char memory[MEMORY_SIZE];
+block_t* free_list = NULL; // Définition de free_list
+static void* memory_meta = NULL;
+static void* memory_data = NULL;
 
 static FILE *log_file = NULL;
 
+int check_canary(block_t* block);
 void log_message(const char *format, ...);
 void log_operation(const char *operation, size_t size, clock_t start, clock_t end);
 
@@ -73,8 +77,26 @@ int check_canary(block_t* block) {
     return 1; // Canaries valid
 }
 
+void initialize_memory() {
+    if (memory_meta == NULL) {
+        memory_meta = mmap(NULL, MEMORY_SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+        if (memory_meta == MAP_FAILED) {
+            perror("mmap meta");
+            exit(EXIT_FAILURE);
+        }
+    }
+    if (memory_data == NULL) {
+        memory_data = mmap(NULL, MEMORY_SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+        if (memory_data == MAP_FAILED) {
+            perror("mmap data");
+            exit(EXIT_FAILURE);
+        }
+    }
+}
+
 void* my_malloc(size_t size) {
     clock_t start = clock();
+    initialize_memory();
 
     if (size == 0 || size > MEMORY_SIZE - sizeof(block_t) - 2 * sizeof(size_t)) {
         log_operation("malloc", size, start, start); // Start and end are the same when returning early
@@ -87,7 +109,7 @@ void* my_malloc(size_t size) {
     }
 
     if (free_list == NULL) {
-        free_list = (block_t*)memory;
+        free_list = (block_t*)memory_meta;
         free_list->size = MEMORY_SIZE - sizeof(block_t) - 2 * sizeof(size_t);
         free_list->next = NULL;
     }
@@ -120,7 +142,7 @@ void* my_malloc(size_t size) {
     current->canary = CANARY_VALUE;
     insert_canary(current);
 
-    void* user_ptr = (void*)((char*)current + sizeof(block_t) + sizeof(size_t));
+    void* user_ptr = (void*)((char*)memory_data + ((char*)current - (char*)memory_meta) + sizeof(block_t) + sizeof(size_t));
     memset(user_ptr, 0, size);
 
     clock_t end = clock();
@@ -131,14 +153,15 @@ void* my_malloc(size_t size) {
 
 void my_free(void* ptr) {
     clock_t start_unused = clock();
+    initialize_memory();
 
     if (ptr == NULL) {
         return;
     }
 
-    block_t* block = (block_t*)((char*)ptr - sizeof(size_t) - sizeof(block_t));
+    block_t* block = (block_t*)((char*)memory_meta + ((char*)ptr - (char*)memory_data - sizeof(size_t) - sizeof(block_t)));
 
-    if ((char*)block < memory || (char*)block >= memory + MEMORY_SIZE) {
+    if ((char*)block < (char*)memory_meta || (char*)block >= (char*)memory_meta + MEMORY_SIZE) {
         fprintf(stderr, "Error: Attempt to free memory outside allocated memory\n");
         return;
     }
@@ -178,6 +201,7 @@ void my_free(void* ptr) {
 
 void* my_calloc(size_t nmemb, size_t size) {
     clock_t start = clock();
+    initialize_memory();
 
     if (nmemb == 0 || size == 0) {
         return NULL;
@@ -203,6 +227,7 @@ void* my_calloc(size_t nmemb, size_t size) {
 
 void* my_realloc(void* ptr, size_t size) {
     clock_t start = clock();
+    initialize_memory();
 
     if (size == 0) {
         my_free(ptr);
@@ -213,7 +238,7 @@ void* my_realloc(void* ptr, size_t size) {
         return my_malloc(size);
     }
 
-    block_t* block = (block_t*)((char*)ptr - sizeof(size_t) - sizeof(block_t));
+    block_t* block = (block_t*)((char*)memory_meta + ((char*)ptr - (char*)memory_data - sizeof(size_t) - sizeof(block_t)));
     size_t old_size = block->size;
 
     if (old_size >= size) {
@@ -250,6 +275,6 @@ void* calloc(size_t nmemb, size_t size) {
 }
 
 void* realloc(void* ptr, size_t size) {
-    return my_realloc(ptr, size);
+    return my_realloc(ptr);
 }
 #endif

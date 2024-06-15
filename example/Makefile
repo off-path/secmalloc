@@ -7,10 +7,11 @@ LIB = lib${PRJ}.so
 
 all: ${LIB}
 
-${LIB} : CFLAGS += -fpic -shared
-${LIB} : ${OBJS}
+${LIB}: ${OBJS}
+	$(CC) $(CFLAGS) -fpic -shared -o $@ $^
 
 ${SLIB}: ${OBJS}
+	${AR} ${ARFLAGS} $@ $^
 
 dynamic: CFLAGS += -DDYNAMIC
 dynamic: ${LIB}
@@ -30,11 +31,10 @@ build_test: ${OBJS} test/test.o
 test: build_test
 	LD_LIBRARY_PATH=./lib test/test
 
-
-//.PHONY: all clean build_test dynamic test static distclean
+.PHONY: all clean build_test dynamic test static distclean
 
 %.so:
-	$(LINK.c) -shared $^ $(LDLIBS) -o $@
+	$(CC) $(CFLAGS) -shared $^ $(LDLIBS) -o $@
 
 %.a:
 	${AR} ${ARFLAGS} $@ $^

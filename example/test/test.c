@@ -9,6 +9,7 @@
 
 #define SEEK_END 2
 #define SEEK_SET 0
+int check_canary(block_t* block);
 
 /*
  * Helper function to read content from a log file
@@ -336,4 +337,31 @@ Test(memory_management, fragmentation) {
     my_free(ptr1);
     my_free(ptr3);
     my_free(ptr4);
+}
+
+//Test en dessous de la limite maximale
+Test(limits, near_max_allocation) {
+    void* ptr = my_malloc(MEMORY_SIZE - sizeof(block_t) - 2 * sizeof(size_t));
+    cr_assert_not_null(ptr, "my_malloc failed to allocate near max memory");
+    my_free(ptr);
+}
+
+//Test canary
+Test(canary, canary_check_after_multiple_operations) {
+    void* ptr1 = my_malloc(100);
+    void* ptr2 = my_malloc(200);
+    void* ptr3 = my_malloc(300);
+    cr_assert_not_null(ptr1, "my_malloc failed to allocate memory for ptr1");
+    cr_assert_not_null(ptr2, "my_malloc failed to allocate memory for ptr2");
+    cr_assert_not_null(ptr3, "my_malloc failed to allocate memory for ptr3");
+
+    my_free(ptr2);
+    my_free(ptr1);
+    my_free(ptr3);
+
+    block_t* block = free_list;
+    while (block != NULL) {
+        cr_assert(check_canary(block), "Canary check failed after multiple operations");
+        block = block->next;
+    }
 }

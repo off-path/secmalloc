@@ -1,9 +1,13 @@
-#ifndef MY_SECMALLOC_PRIVATE_H
-#define MY_SECMALLOC_PRIVATE_H
+#ifndef MY_SECMALLOC_H
+#define MY_SECMALLOC_H
 
-#include <stddef.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <time.h>
+#include <stdarg.h>
+#include <sys/mman.h>
+#include <unistd.h>
 
 #define MEMORY_SIZE 10000
 #define CANARY_VALUE 0xDEADBEEF
@@ -14,7 +18,8 @@ typedef struct block {
     struct block* next;
 } block_t;
 
-extern block_t* free_list;
+extern block_t* free_list; // Déclaration de free_list
+
 extern char memory[MEMORY_SIZE];
 
 void* my_malloc(size_t size);
