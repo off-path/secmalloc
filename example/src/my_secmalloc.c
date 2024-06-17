@@ -43,17 +43,36 @@ void close_log_file() {
 
 void log_message(const char *format, ...) {
     open_log_file();
+
     if (log_file != NULL) {
         va_list args;
         va_start(args, format);
-        vfprintf(log_file, format, args);
+
+        va_list args_copy;
+        va_copy(args_copy, args); // Copie la liste d'arguments (ca marche pas sinon)
+        int needed_length = vsnprintf(NULL, 0, format, args_copy); 
+        va_end(args_copy);
+
+        // Alloue un tampon pour contenir le message formaté
+        char *buffer = (char *)malloc(needed_length * sizeof(char));
+        if (buffer != NULL) {
+            // si le message est correctement formaté, l'écrit dans le fichier
+            vsnprintf(buffer, needed_length, format, args);
+            fprintf(log_file, "%s\n", buffer);
+            free(buffer);
+        }
+
         va_end(args);
-        fprintf(log_file, "\n");
+        close_log_file();
     }
 }
 
 void log_operation(const char *operation, size_t size, clock_t start, clock_t end) {
-    log_message("%s: size=%zu, start=%ld, end=%ld", operation, size, start, end);
+    // ajout du temps d'exécution
+    double elapsed_time = (double)(end - start) / CLOCKS_PER_SEC;
+
+
+    log_message("%s: size=%zu, start=%ld, end=%ld, elapsed_time=%.6f seconds", operation, size, start, end, elapsed_time);
 }
 
 size_t generate_canary() {
@@ -162,12 +181,10 @@ void my_free(void* ptr) {
     block_t* block = (block_t*)((char*)memory_meta + ((char*)ptr - (char*)memory_data - sizeof(size_t) - sizeof(block_t)));
 
     if ((char*)block < (char*)memory_meta || (char*)block >= (char*)memory_meta + MEMORY_SIZE) {
-        fprintf(stderr, "Error: Attempt to free memory outside allocated memory\n");
         return;
     }
 
     if (!check_canary(block)) {
-        fprintf(stderr, "Error: Memory corruption detected (canary mismatch)\n");
         return;
     }
 
